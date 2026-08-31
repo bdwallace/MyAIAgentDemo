@@ -1,5 +1,6 @@
 一、整体架构
 
+```text
                          ┌──────────────────────┐
                          │       Clients        │
                          │                      │
@@ -58,8 +59,11 @@
                      │ Git                 │
                      │ Trading API         │
                      └─────────────────────┘
+```
 
 二、最终RoadMap
+
+```text
                   TARGET ARCHITECTURE
                          │
                          │
@@ -83,10 +87,11 @@ LLM   Memory    Tools          PostgreSQL Redis   Storage
           │
           ↓
    Web / CLI / Mobile
-
+```
 
 IMPLEMENTATION ROADMAP
 
+```text
 V0
 Agent + LLM + Tools
        ↓
@@ -110,6 +115,7 @@ Web / Desktop / Mobile
        ↓
 V4
 Multi-Agent / Distributed
+```
 
 请求怎么从浏览器走到模型、LangGraph 每个节点做什么：见 `docs/请求流程.md`。
 
