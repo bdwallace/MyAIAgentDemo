@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MyAiAgent V0.5</title>
+  <script src="/static/vendor/vue.global.prod.js"></script>
+  <script src="/static/vendor/marked.min.js"></script>
+  <style>
+    :root { --bg:#13151c; --panel:#1c2030; --line:#2c3348; --ink:#e8e6df; --muted:#8b93a7; --accent:#e08a4b; --moss:#7da87a; --danger:#c45c5c; }
+    * { box-sizing:border-box; }
+    html, body, #app { height:100%; margin:0; }
+    body { background:var(--bg); color:var(--ink); font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+    #app { display:grid; grid-template-columns:260px 1fr; }
+    aside { border-right:1px solid var(--line); padding:16px; display:flex; flex-direction:column; min-width:0; }
+    h1 { font-family:Georgia,"Times New Roman",serif; font-size:20px; margin:0 0 4px; }
+    .sub, .tiny { color:var(--muted); font-size:12px; }
+    .dot { width:8px; height:8px; border-radius:50%; display:inline-block; background:#c45c5c; margin-right:6px; }
+    .dot.ok { background:var(--moss); }
+    button, textarea { font-family:inherit; }
+    .new, .send, .item, .stop { border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:10px; padding:8px 10px; cursor:pointer; text-align:left; }
+    .new { width:100%; margin:14px 0 8px; background:rgba(224,138,75,.12); border-color:rgba(224,138,75,.4); }
+    .list { flex:1; overflow:auto; min-height:0; }
+    .conv { display:flex; align-items:stretch; gap:4px; margin-bottom:6px; }
+    .item { flex:1; min-width:0; margin:0; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .item.on, .item:hover { color:var(--ink); }
+    .del { width:32px; flex:none; border:1px solid transparent; background:transparent; color:var(--muted); border-radius:8px; cursor:pointer; opacity:0; }
+    .conv:hover .del, .conv.on .del { opacity:1; }
+    .del:hover { color:#f3e6e6; background:rgba(196,92,92,.28); border-color:rgba(196,92,92,.45); }
+    main { display:flex; flex-direction:column; min-width:0; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 28px; border-bottom:1px solid var(--line); }
+    .topbar .name { font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .busy-tag { font-size:12px; color:var(--accent); flex:none; }
+    .log { flex:1; overflow:auto; padding:24px 28px; }
+    .empty h2 { font-family:Georgia,"Times New Roman",serif; font-weight:600; }
+    .chip { display:block; width:100%; margin:8px 0; text-align:left; background:var(--panel); border:1px solid var(--line); color:var(--ink); border-radius:10px; padding:10px 12px; cursor:pointer; }
+    .msg { display:flex; gap:10px; margin:0 0 18px; }
+    .av { width:28px; height:28px; border-radius:8px; display:grid; place-items:center; font-size:12px; flex:none; }
+    .me { background:rgba(224,138,75,.25); }
+    .bot { background:rgba(125,168,122,.22); }
+    .md { line-height:1.7; font-size:15px; }
+    .md p { margin:0 0 8px; }
+    pre, code { font-family:Consolas,"Courier New",monospace; font-size:13px; }
+    pre { background:#0f1218; border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto; }
+    .tool { font-size:12px; background:#0f1218; border:1px solid var(--line); border-radius:8px; padding:8px; margin:0 0 8px; }
+    .tool b { color:var(--accent); }
+    .tool pre { margin:6px 0 0; max-height:120px; color:var(--muted); white-space:pre-wrap; }
+    .bar { display:flex; gap:8px; padding:12px 28px 20px; border-top:1px solid var(--line); }
+    textarea { flex:1; height:52px; resize:none; background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:12px; }
+    .send, .stop { width:auto; font-weight:600; flex:none; }
+    .send { background:var(--accent); border-color:transparent; }
+    .send:disabled { opacity:.5; }
+    .stop { background:var(--danger); border-color:transparent; color:#f8ecec; }
+    .mem-head { font-size:12px; color:var(--muted); margin:10px 0 6px; display:flex; justify-content:space-between; }
+    .mem-list { max-height:200px; overflow:auto; border-top:1px solid var(--line); padding-top:8px; }
+    .mem { display:flex; align-items:flex-start; gap:4px; margin-bottom:8px; }
+    .mem .body { flex:1; min-width:0; }
+    .mem b { font-size:12px; }
+    .mem-text { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .mem:hover .del { opacity:1; }
+    @media (max-width: 720px) {
+      #app { grid-template-columns:1fr; }
+      aside { display:none; }
+    }
+  </style>
+</head>
+<body>
+  <p id="boot-error" style="display:none;padding:24px;color:#e8e6df">前端脚本没有加载到。请确认 Gateway 在 http://127.0.0.1:8080 打开，而不是直接双击 html。</p>
+  <div id="app">
+    <aside>
+      <h1>MyAiAgent</h1>
+      <div class="sub">V0.5 · Memory + Postgres</div>
+      <p class="tiny"><i class="dot" :class="{ok: health.ok}"></i>{{ llmLabel }} · PG {{ health.postgres ? 'ok' : 'down' }}</p>
+      <button class="new" @click="newChat">新对话</button>
+      <div class="list">
+        <div class="conv" :class="{on: c.id===conversationId}" v-for="c in conversations" :key="c.id">
+          <button class="item" :class="{on: c.id===conversationId}" :title="c.title" @click="open(c.id)">{{ c.title }}</button>
+          <button class="del" title="删除会话" @click="removeConv(c.id, $event)">×</button>
+        </div>
+      </div>
+      <div class="mem-head">长期记忆 <span>{{ memories.length }}</span></div>
+      <div class="mem-list">
+        <p class="tiny" v-if="!memories.length">跨对话的事实会记在这里。删会话不会丢掉。</p>
+        <div class="mem" v-for="m in memories" :key="m.id">
+          <div class="body">
+            <b>{{ m.key }}</b> <span class="tiny">{{ m.kind }}</span>
+            <div class="tiny mem-text" :title="m.content">{{ m.content }}</div>
+          </div>
+          <button class="del" title="忘掉" @click="removeMem(m.id)">×</button>
+        </div>
+      </div>
+    </aside>
+    <main>
+      <div class="topbar">
+        <span class="name">{{ currentTitle }}</span>
+        <span class="busy-tag" v-if="busy">生成中 · Esc 终止</span>
+      </div>
+      <div class="log" ref="log">
+        <div v-if="!messages.length" class="empty">
+          <h2>V0.5：工具循环 + 长期记忆。</h2>
+          <p class="sub">先让它记住一件事，再开新对话问它。删会话不会丢掉记忆。</p>
+          <button class="chip" v-for="ex in examples" :key="ex" @click="draft=ex; send()">{{ ex }}</button>
+        </div>
+        <div class="msg" v-for="(m,i) in messages" :key="i">
+          <div class="av" :class="m.role==='user'?'me':'bot'">{{ m.role==='user'?'我':'A' }}</div>
+          <div>
+            <div class="tool" v-for="(t,j) in (m.tools||[])" :key="j">
+              <b>{{ t.name }}</b> {{ t.status==='running' ? '执行中' : (t.status==='stopped' ? '已终止' : '完成') }}
+              <pre v-if="t.output">{{ t.output }}</pre>
+            </div>
+            <div class="md" v-html="render(m.content)"></div>
+          </div>
+        </div>
+      </div>
+      <div class="bar">
+        <textarea v-model="draft" :placeholder="busy?'正在生成，可点终止或按 Esc…':'Enter 发送'" @keydown.enter.exact.prevent="send"></textarea>
+        <button class="stop" v-if="busy" @click="stop">终止</button>
+        <button class="send" v-else :disabled="!draft.trim()" @click="send">发送</button>
+      </div>
+    </main>
+  </div>
+  <script>
+    if (typeof Vue === "undefined") {
+      document.getElementById("boot-error").style.display = "block";
+    } else {
+    const { createApp, ref, computed, onMounted, nextTick } = Vue;
+    createApp({
+      setup() {
+        const health = ref({ ok:false, postgres:false, has_api_key:false, model:'', llm:{} });
+        const conversations = ref([]);
+        const conversationId = ref(null);
+        const messages = ref([]);
+        const memories = ref([]);
+        const draft = ref('');
+        const busy = ref(false);
+        const log = ref(null);
+        const abortCtl = ref(null);
+        const examples = [
+          '记住：我叫阿旺，住在杭州，日常用 Python。',
+          '用 search_web 查一下 LangGraph 是什么，两句话说明。',
+          '用 Python 算斐波那契第 20 项，并 print 结果。'
+        ];
+        const render = (t) => {
+          if (!t) return '';
+          if (typeof marked !== "undefined" && marked.parse) return marked.parse(t);
+          return String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+        };
+        const scroll = async () => { await nextTick(); if (log.value) log.value.scrollTop = log.value.scrollHeight; };
+        const llmLabel = computed(() => {
+          const llm = health.value.llm || {};
+          if (llm.ready) return (llm.local ? '本地 ' : '') + health.value.model;
+          return llm.error || (health.value.model || '模型未就绪');
+        });
+        const currentTitle = computed(() => {
+          const found = conversations.value.find(c => c.id === conversationId.value);
+          return found ? found.title : '新对话';
+        });
+        const isPlaceholder = (text) => !text || /模型正在生成/.test(text);
+        const markStopped = (bot) => {
+          (bot.tools || []).forEach((t) => { if (t.status === 'running') t.status = 'stopped'; });
+          if (isPlaceholder(bot.content)) bot.content = '已停止生成。';
+        };
+        const loadHealth = async () => health.value = await (await fetch('/api/health')).json();
+        const loadCons = async () => conversations.value = await (await fetch('/api/conversations')).json();
+        const loadMems = async () => memories.value = await (await fetch('/api/memories')).json();
+        const stop = () => {
+          const id = conversationId.value;
+          if (abortCtl.value) abortCtl.value.abort();
+          if (id) fetch(`/api/conversations/${id}/stop`, { method: 'POST' });
+        };
+        const newChat = () => {
+          if (busy.value) stop();
+          conversationId.value = null;
+          messages.value = [];
+        };
+        const open = async (id) => {
+          if (busy.value) stop();
+          conversationId.value = id;
+          messages.value = await (await fetch(`/api/conversations/${id}/messages`)).json();
+          await scroll();
+        };
+        const removeConv = async (id, ev) => {
+          if (ev) ev.stopPropagation();
+          if (!confirm('删除这个会话？消息无法恢复。')) return;
+          if (busy.value && conversationId.value === id) stop();
+          const res = await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
+          if (!res.ok) {
+            alert('删除失败');
+            return;
+          }
+          if (conversationId.value === id) {
+            conversationId.value = null;
+            messages.value = [];
+          }
+          await loadCons();
+        };
+        const removeMem = async (id) => {
+          if (!confirm('忘掉这条长期记忆？')) return;
+          const res = await fetch(`/api/memories/${id}`, { method: 'DELETE' });
+          if (!res.ok) {
+            alert('删除失败');
+            return;
+          }
+          await loadMems();
+        };
+        const send = async () => {
+          const text = draft.value.trim();
+          if (!text || busy.value) return;
+          draft.value = '';
+          messages.value.push({ role:'user', content:text });
+          const bot = { role:'assistant', content:'', tools:[] };
+          messages.value.push(bot);
+          busy.value = true;
+          abortCtl.value = new AbortController();
+          await scroll();
+          try {
+            const res = await fetch('/api/chat', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ message:text, conversation_id: conversationId.value }),
+              signal: abortCtl.value.signal
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(()=>({detail:res.statusText}));
+              bot.content = '出错了：' + (err.detail || '');
+              return;
+            }
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = '';
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              buf += decoder.decode(value, { stream:true });
+              const parts = buf.split('\n\n');
+              buf = parts.pop();
+              for (const part of parts) {
+                const line = part.split('\n').find(l => l.startsWith('data: '));
+                if (!line) continue;
+                const ev = JSON.parse(line.slice(6));
+                if (ev.type === 'conversation') conversationId.value = ev.id;
+                else if (ev.type === 'status' && !bot.content) bot.content = ev.content;
+                else if (ev.type === 'text') {
+                  if (bot.content && bot.content.indexOf('模型正在生成') >= 0) bot.content = '';
+                  bot.content += ev.content;
+                }
+                else if (ev.type === 'tool_start') bot.tools.push({ name:ev.name, output:'', status:'running' });
+                else if (ev.type === 'tool_end') {
+                  const t = [...bot.tools].reverse().find(x => x.name===ev.name && x.status==='running') || bot.tools.at(-1);
+                  if (t) { t.output = ev.output; t.status = 'done'; }
+                } else if (ev.type === 'memories') memories.value = ev.items || [];
+                else if (ev.type === 'stopped') markStopped(bot);
+                else if (ev.type === 'error') bot.content += '\n\n错误：' + ev.message;
+              }
+              await scroll();
+            }
+          } catch (e) {
+            if (e && e.name === 'AbortError') markStopped(bot);
+            else bot.content += '\n\n错误：' + (e && e.message ? e.message : e);
+          } finally {
+            busy.value = false;
+            abortCtl.value = null;
+            loadCons();
+            loadMems();
+            await scroll();
+          }
+        };
+        onMounted(() => {
+          loadHealth();
+          loadCons();
+          loadMems();
+          window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && busy.value) stop();
+          });
+        });
+        return { health, llmLabel, currentTitle, conversations, conversationId, messages, memories, draft, busy, log, examples, render, newChat, open, send, stop, removeConv, removeMem };
+      }
+    }).mount('#app');
+    }
+  </script>
+</body>
+</html>
