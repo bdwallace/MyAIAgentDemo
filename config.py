@@ -20,10 +20,11 @@ class Settings(BaseSettings):
     llm_timeout_seconds: int = 600
 
     # 密码里有 @ 等特殊字符时，不要写成一条 URL，用下面分项。
+    # Docker：127.0.0.1:5433（见 docker-compose）。本机安装的 PG 一般是 5432。
     pg_user: str = "agent"
     pg_password: str = "@Root123456"
     pg_host: str = "127.0.0.1"
-    pg_port: int = 5432
+    pg_port: int = 5433
     pg_database: str = "private_agent"
 
     host: str = "127.0.0.1"
@@ -33,6 +34,16 @@ class Settings(BaseSettings):
     python_timeout_seconds: int = 15
     web_timeout_seconds: int = 15
     sandbox_dir: Path = ROOT_DIR / "sandbox"
+
+    # RAG。embedding_base_url 为空则用本机 bge-small-zh（modelscope）。
+    embedding_base_url: str = ""
+    embedding_api_key: str = ""
+    embedding_model: str = "BAAI/bge-small-zh-v1.5"
+    embedding_dim: int = 512
+    rag_top_k: int = 4
+    rag_min_score: float = 0.35
+    rag_chunk_size: int = 400
+    rag_chunk_overlap: int = 60
 
 
 settings = Settings()

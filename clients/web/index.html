@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MyAiAgent V0.5</title>
+  <title>MyAiAgent V0.6</title>
   <script src="/static/vendor/vue.global.prod.js"></script>
   <script src="/static/vendor/marked.min.js"></script>
   <style>
@@ -52,7 +52,8 @@
     .send:disabled { opacity:.5; }
     .stop { background:var(--danger); border-color:transparent; color:#f8ecec; }
     .mem-head { font-size:12px; color:var(--muted); margin:10px 0 6px; display:flex; justify-content:space-between; }
-    .mem-list { max-height:200px; overflow:auto; border-top:1px solid var(--line); padding-top:8px; }
+    .mem-list { max-height:140px; overflow:auto; border-top:1px solid var(--line); padding-top:8px; }
+    aside input.item { opacity:1; color:var(--ink); }
     .mem { display:flex; align-items:flex-start; gap:4px; margin-bottom:8px; }
     .mem .body { flex:1; min-width:0; }
     .mem b { font-size:12px; }
@@ -69,7 +70,7 @@
   <div id="app">
     <aside>
       <h1>MyAiAgent</h1>
-      <div class="sub">V0.5 · Memory + Postgres</div>
+      <div class="sub">V0.6 · RAG + 向量检索</div>
       <p class="tiny"><i class="dot" :class="{ok: health.ok}"></i>{{ llmLabel }} · PG {{ health.postgres ? 'ok' : 'down' }}</p>
       <button class="new" @click="newChat">新对话</button>
       <div class="list">
@@ -89,6 +90,19 @@
           <button class="del" title="忘掉" @click="removeMem(m.id)">×</button>
         </div>
       </div>
+      <div class="mem-head">知识库 <span>{{ documents.length }}</span></div>
+      <div class="mem-list">
+        <p class="tiny" v-if="!documents.length">把内部文档入库后，提问会按向量相似度召回。</p>
+        <div class="mem" v-for="d in documents" :key="d.id">
+          <div class="body">
+            <b>{{ d.title }}</b> <span class="tiny">{{ d.chunk_count }} 块</span>
+          </div>
+          <button class="del" title="删除文档" @click="removeDoc(d.id)">×</button>
+        </div>
+        <input class="item" style="width:100%;margin:6px 0" v-model="docTitle" placeholder="标题" />
+        <textarea v-model="docDraft" placeholder="粘贴正文后点入库" style="width:100%;height:56px;margin:0 0 6px"></textarea>
+        <button class="new" style="margin:0" :disabled="!docDraft.trim() || ingesting" @click="ingestDoc">{{ ingesting ? '向量化中…' : '入库' }}</button>
+      </div>
     </aside>
     <main>
       <div class="topbar">
@@ -97,8 +111,8 @@
       </div>
       <div class="log" ref="log">
         <div v-if="!messages.length" class="empty">
-          <h2>V0.5：工具循环 + 长期记忆。</h2>
-          <p class="sub">先让它记住一件事，再开新对话问它。删会话不会丢掉记忆。</p>
+          <h2>V0.6：工具循环 + 记忆 + 知识库。</h2>
+          <p class="sub">知识库里有一份《内部手册》。问暗号，应靠向量检索答出，而不是搜网页。</p>
           <button class="chip" v-for="ex in examples" :key="ex" @click="draft=ex; send()">{{ ex }}</button>
         </div>
         <div class="msg" v-for="(m,i) in messages" :key="i">
@@ -131,13 +145,17 @@
         const conversationId = ref(null);
         const messages = ref([]);
         const memories = ref([]);
+        const documents = ref([]);
+        const docTitle = ref('');
+        const docDraft = ref('');
+        const ingesting = ref(false);
         const draft = ref('');
         const busy = ref(false);
         const log = ref(null);
         const abortCtl = ref(null);
         const examples = [
+          '知识库里的暗号是什么？不要搜网。',
           '记住：我叫阿旺，住在杭州，日常用 Python。',
-          '用 search_web 查一下 LangGraph 是什么，两句话说明。',
           '用 Python 算斐波那契第 20 项，并 print 结果。'
         ];
         const render = (t) => {
@@ -163,6 +181,7 @@
         const loadHealth = async () => health.value = await (await fetch('/api/health')).json();
         const loadCons = async () => conversations.value = await (await fetch('/api/conversations')).json();
         const loadMems = async () => memories.value = await (await fetch('/api/memories')).json();
+        const loadDocs = async () => documents.value = await (await fetch('/api/documents')).json();
         const stop = () => {
           const id = conversationId.value;
           if (abortCtl.value) abortCtl.value.abort();
@@ -202,6 +221,39 @@
             return;
           }
           await loadMems();
+        };
+        const ingestDoc = async () => {
+          const content = docDraft.value.trim();
+          if (!content || ingesting.value) return;
+          ingesting.value = true;
+          try {
+            const res = await fetch('/api/documents', {
+              method: 'POST',
+              headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ title: docTitle.value.trim() || '未命名文档', content })
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(()=>({detail:res.statusText}));
+              alert('入库失败：' + (err.detail || ''));
+              return;
+            }
+            docTitle.value = '';
+            docDraft.value = '';
+            await loadDocs();
+          } catch (e) {
+            alert('入库失败：' + (e && e.message ? e.message : e));
+          } finally {
+            ingesting.value = false;
+          }
+        };
+        const removeDoc = async (id) => {
+          if (!confirm('从知识库删掉这篇？')) return;
+          const res = await fetch(`/api/documents/${id}`, { method: 'DELETE' });
+          if (!res.ok) {
+            alert('删除失败');
+            return;
+          }
+          await loadDocs();
         };
         const send = async () => {
           const text = draft.value.trim();
@@ -249,6 +301,7 @@
                   const t = [...bot.tools].reverse().find(x => x.name===ev.name && x.status==='running') || bot.tools.at(-1);
                   if (t) { t.output = ev.output; t.status = 'done'; }
                 } else if (ev.type === 'memories') memories.value = ev.items || [];
+                else if (ev.type === 'documents') documents.value = ev.items || [];
                 else if (ev.type === 'stopped') markStopped(bot);
                 else if (ev.type === 'error') bot.content += '\n\n错误：' + ev.message;
               }
@@ -262,6 +315,7 @@
             abortCtl.value = null;
             loadCons();
             loadMems();
+            loadDocs();
             await scroll();
           }
         };
@@ -269,11 +323,12 @@
           loadHealth();
           loadCons();
           loadMems();
+          loadDocs();
           window.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && busy.value) stop();
           });
         });
-        return { health, llmLabel, currentTitle, conversations, conversationId, messages, memories, draft, busy, log, examples, render, newChat, open, send, stop, removeConv, removeMem };
+        return { health, llmLabel, currentTitle, conversations, conversationId, messages, memories, documents, docTitle, docDraft, ingesting, draft, busy, log, examples, render, newChat, open, send, stop, removeConv, removeMem, ingestDoc, removeDoc };
       }
     }).mount('#app');
     }

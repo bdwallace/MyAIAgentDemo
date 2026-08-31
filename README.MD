@@ -131,14 +131,22 @@ Multi-Agent / Distributed
   data/           → Data Layer（会话 + memories 表）
   tools/          → Tool Runtime（外部工具 + remember / recall / forget）
 
-1. 启动 Postgres
+1. 启动 Postgres（Docker + pgvector）
 
-  需要本机有 Docker Desktop，然后：
+  安装 Docker Desktop，然后在项目根目录：
 
     docker compose up -d
 
-  如果没有 Docker，也可以自己安装 PostgreSQL 16，创建数据库 `myaiagent`、用户 `agent` / 密码 `agent`，
-  或把 `.env` 里的 `DATABASE_URL` 改成你的连接串。
+  容器内是 PostgreSQL 16 + vector 扩展。本机 Windows 若已装 PG 18，5432 已被占用，
+  所以映射到 **5433**。`.env` 里保持：
+
+    PG_HOST=127.0.0.1
+    PG_PORT=5433
+    PG_USER=agent
+    PG_PASSWORD=@Root123456
+    PG_DATABASE=private_agent
+
+  第一次启动会建空库；Gateway 起来后会自动建表并灌入 `docs/knowledge`。
 
 2. 安装并配置
 
@@ -193,5 +201,32 @@ Multi-Agent / Distributed
   2. 左侧「长期记忆」出现条目
   3. 点「新对话」，问「我住哪？」——不应再问你一次
 
-本轮不包含：RAG / pgvector、Celery、完整 Tool System、多端客户端。
+本轮相对 V0：长期记忆。V0.6 才是 RAG。
+
+五、V0.6 多了什么
+
+范围：私有文档 RAG。切块 → 向量 → 按问题检索 → 塞进 Prompt。
+
+不要和 V0.5 的 memories 混：
+  memories     → 用户是谁（姓名、城市）
+  documents    → 资料里写了什么（手册、笔记）
+
+本机 Windows PostgreSQL 18 通常没有 vector 扩展。V0.6 推荐用 Docker：`pgvector/pgvector:pg16`，宿主机端口 **5433**。
+向量列用 pgvector 的 `vector` 类型，检索用余弦距离 `<=>`。
+
+对应文件：
+
+  model/embed.py     → 本机 bge-small-zh，或 OpenAI 兼容 /v1/embeddings
+  data/rag.py        → documents / doc_chunks、切块、入库、检索
+  runtime/rag.py     → 每轮把命中片段装进 System Prompt
+  tools/rag.py       → search_docs / ingest_doc
+  docs/knowledge/    → 启动时空库时自动灌进去的示例手册
+
+怎么验证：
+
+  1. 打开 http://127.0.0.1:8080 ，左侧应出现《内部手册》
+  2. 新对话问「知识库里的暗号是什么？不要搜网。」
+  3. 应答「落叶归根」，且不应去 search_web
+
+可选：.env 里配 EMBEDDING_BASE_URL 走云端 embedding；留空则本机下载 BAAI/bge-small-zh-v1.5（第一次较慢）。
 

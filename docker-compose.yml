@@ -1,20 +1,23 @@
 services:
   postgres:
-    image: postgres:16
+    # Docker Hub 在国内常超时，走 DaoCloud 镜像
+    image: docker.m.daocloud.io/pgvector/pgvector:pg16
     container_name: myaiagent-pg
     environment:
       POSTGRES_USER: agent
-      POSTGRES_PASSWORD: agent
-      POSTGRES_DB: myaiagent
+      POSTGRES_PASSWORD: "@Root123456"
+      POSTGRES_DB: private_agent
     ports:
-      - "5432:5432"
+      # 本机 Windows PostgreSQL 占用 5432，Docker 映射到 5433
+      - "5433:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgvector_data:/var/lib/postgresql/data
+      - ./docker/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agent -d myaiagent"]
+      test: ["CMD-SHELL", "pg_isready -U agent -d private_agent"]
       interval: 3s
       timeout: 5s
-      retries: 10
+      retries: 15
 
 volumes:
-  pgdata:
+  pgvector_data:

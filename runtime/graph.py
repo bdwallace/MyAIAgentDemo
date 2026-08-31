@@ -1,7 +1,7 @@
 """Agent Runtime · LangGraph 循环。
 
 V0 没有独立 Planner：LLM 自己决定是否调用工具。
-V0.5 在 reason 里注入长期记忆（runtime/memory.py），再走 Reason → Act → Observe。
+V0.5 注入长期记忆；V0.6 再按当前问题检索知识库（runtime/rag.py）。
 
 reason 是「推理」不是「原因」，来自 ReAct：想一轮 → 动手 → 看结果 → 再想。
 图解与整条请求链路见 docs/请求流程.md。
@@ -19,6 +19,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from model.llm import build_llm
 from runtime.memory import prompt_block
+from runtime.rag import prompt_block as rag_block
 from runtime.prompts import SYSTEM_PROMPT
 from tools import ALL_TOOLS
 
@@ -28,13 +29,25 @@ class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
 
 
+def _last_user_text(messages: list[BaseMessage]) -> str:
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage) and isinstance(msg.content, str):
+            return msg.content
+    return ""
+
+
 async def reason(state: AgentState) -> dict:
     """唯一调用 LLM 的节点。输出要么是最终回答，要么是 tool_calls。"""
     llm = build_llm().bind_tools(ALL_TOOLS)
-    system = SYSTEM_PROMPT.replace(
-        "__NOW__", datetime.now().astimezone().isoformat(timespec="seconds")
-    ).replace("__MEMORIES__", prompt_block())
-    # System 每轮现拼（含长期记忆）；state["messages"] 只是本会话短时历史
+    question = _last_user_text(state["messages"])
+    system = (
+        SYSTEM_PROMPT.replace(
+            "__NOW__", datetime.now().astimezone().isoformat(timespec="seconds")
+        )
+        .replace("__MEMORIES__", prompt_block())
+        .replace("__RAG__", rag_block(question))
+    )
+    # System 每轮现拼（记忆 + RAG）；state["messages"] 只是本会话短时历史
     response = await llm.ainvoke([SystemMessage(content=system), *state["messages"]])
     return {"messages": [response]}
 

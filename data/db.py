@@ -1,8 +1,8 @@
 """Data Layer · PostgreSQL。
 
-V0：conversations / messages（短时记忆 = 当前对话窗口）。
-V0.5：memories 表在 data/memory.py（长期记忆，跨对话）。
-V0.6：才给 memories 加 pgvector。
+V0：conversations / messages。
+V0.5：memories。
+V0.6：documents / doc_chunks，向量列是 pgvector 的 vector（Docker 里开扩展）。
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, create_engine, select
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, create_engine, event, select
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
@@ -61,10 +61,27 @@ engine = create_engine(_engine_url(), pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
+@event.listens_for(engine, "connect")
+def _register_pgvector(dbapi_connection, _record) -> None:
+    from pgvector.psycopg import register_vector
+
+    register_vector(dbapi_connection)
+
+
 def init_db() -> None:
     from data import memory as _memory  # noqa: F401  注册 memories 表
+    from data import rag as _rag  # noqa: F401  注册 documents / doc_chunks
 
+    if not _rag.pgvector_available():
+        raise RuntimeError(
+            "PostgreSQL 没有 vector 扩展。先在项目根目录执行: docker compose up -d"
+        )
     Base.metadata.create_all(engine)
+    try:
+        _rag.seed_knowledge_if_empty()
+    except Exception as exc:
+        # 第一次会下载 bge 权重；失败不阻断 Gateway，可稍后在页面入库
+        print(f"知识库种子未写入：{exc}")
 
 
 def ping() -> bool:

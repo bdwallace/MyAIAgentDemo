@@ -27,6 +27,13 @@ from data.db import (
     ping,
 )
 from data.memory import delete_memory, list_memories, memory_count
+from data.rag import (
+    chunk_count,
+    delete_document,
+    ingest_document,
+    list_documents,
+    pgvector_available,
+)
 
 # conversation_id -> 取消事件。终止按钮 / 客户端断开时 set。
 _runs: dict[str, asyncio.Event] = {}
@@ -39,12 +46,12 @@ async def lifespan(_app: FastAPI):
         ping()
     except Exception as exc:
         raise RuntimeError(
-            "PostgreSQL 连不上。先执行: docker compose up -d"
+            "PostgreSQL 连不上。先在项目根目录执行: docker compose up -d（端口 5433）"
         ) from exc
     yield
 
 
-app = FastAPI(title="MyAiAgent Gateway V0.5", lifespan=lifespan)
+app = FastAPI(title="MyAiAgent Gateway V0.6", lifespan=lifespan)
 CLIENT_DIR = ROOT_DIR / "clients" / "web"
 app.mount("/static", StaticFiles(directory=CLIENT_DIR), name="static")
 
@@ -52,6 +59,11 @@ app.mount("/static", StaticFiles(directory=CLIENT_DIR), name="static")
 class ChatRequest(BaseModel):
     message: str
     conversation_id: str | None = None
+
+
+class IngestRequest(BaseModel):
+    title: str
+    content: str
 
 
 def _sse(payload: dict) -> str:
@@ -73,6 +85,7 @@ async def health():
     except Exception:
         db_ok = False
     llm = inspect_llm()
+    from model.embed import embedding_backend
     from tools import ALL_TOOLS
 
     return {
@@ -83,6 +96,11 @@ async def health():
         "model": settings.llm_model,
         "tools": [t.name for t in ALL_TOOLS],
         "memories": memory_count(),
+        "rag": {
+            "pgvector": pgvector_available(),
+            "chunks": chunk_count(),
+            "embedding": embedding_backend(),
+        },
     }
 
 
@@ -115,6 +133,28 @@ async def api_memories():
 async def api_delete_memory(memory_id: int):
     if not delete_memory(memory_id):
         raise HTTPException(404, "记忆不存在")
+    return {"ok": True}
+
+
+@app.get("/api/documents")
+async def api_documents():
+    return list_documents()
+
+
+@app.post("/api/documents")
+async def api_ingest(req: IngestRequest):
+    try:
+        return await asyncio.to_thread(
+            ingest_document, req.title.strip(), req.content, "ui"
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.delete("/api/documents/{document_id}")
+async def api_delete_document(document_id: int):
+    if not delete_document(document_id):
+        raise HTTPException(404, "文档不存在")
     return {"ok": True}
 
 
@@ -288,6 +328,8 @@ async def api_chat(req: ChatRequest, request: Request):
                     )
                     if name in {"remember", "forget"}:
                         yield _sse({"type": "memories", "items": list_memories()})
+                    if name == "ingest_doc":
+                        yield _sse({"type": "documents", "items": list_documents()})
 
             # 图结束：把完整回答写入 messages，下次短时窗口能看见
             answer = "".join(collected).strip() or last_ai
