@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MyAiAgent V0.6</title>
+  <title>MyAiAgent V1</title>
   <script src="/static/vendor/vue.global.prod.js"></script>
   <script src="/static/vendor/marked.min.js"></script>
   <style>
@@ -70,8 +70,8 @@
   <div id="app">
     <aside>
       <h1>MyAiAgent</h1>
-      <div class="sub">V0.6 · RAG + 向量检索</div>
-      <p class="tiny"><i class="dot" :class="{ok: health.ok}"></i>{{ llmLabel }} · PG {{ health.postgres ? 'ok' : 'down' }}</p>
+      <div class="sub">V1 · 完整 Tool System</div>
+      <p class="tiny"><i class="dot" :class="{ok: health.ok}"></i>{{ llmLabel }} · PG {{ health.postgres ? 'ok' : 'down' }} · 工具 {{ (health.tools||[]).length }}</p>
       <button class="new" @click="newChat">新对话</button>
       <div class="list">
         <div class="conv" :class="{on: c.id===conversationId}" v-for="c in conversations" :key="c.id">
@@ -111,8 +111,8 @@
       </div>
       <div class="log" ref="log">
         <div v-if="!messages.length" class="empty">
-          <h2>V0.6：工具循环 + 记忆 + 知识库。</h2>
-          <p class="sub">知识库里有一份《内部手册》。问暗号，应靠向量检索答出，而不是搜网页。</p>
+          <h2>V1：工具分组登记，文件 / Shell / Git 都在 sandbox/。</h2>
+          <p class="sub">点下面试知识库、写文件，或在沙箱里 git init。</p>
           <button class="chip" v-for="ex in examples" :key="ex" @click="draft=ex; send()">{{ ex }}</button>
         </div>
         <div class="msg" v-for="(m,i) in messages" :key="i">
@@ -154,9 +154,9 @@
         const log = ref(null);
         const abortCtl = ref(null);
         const examples = [
+          '在 sandbox 里用 write_file 写 hello-v1.txt，内容写成 hello v1，再 list_dir。',
           '知识库里的暗号是什么？不要搜网。',
-          '记住：我叫阿旺，住在杭州，日常用 Python。',
-          '用 Python 算斐波那契第 20 项，并 print 结果。'
+          '在 sandbox 里 git_init，然后 git_status。'
         ];
         const render = (t) => {
           if (!t) return '';

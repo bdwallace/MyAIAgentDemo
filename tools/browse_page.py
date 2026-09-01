@@ -17,7 +17,7 @@ def browse_page(url: str) -> str:
         with httpx.Client(
             timeout=settings.web_timeout_seconds,
             follow_redirects=True,
-            headers={"User-Agent": "MyAiAgent/v0"},
+            headers={"User-Agent": "MyAiAgent/v1"},
         ) as client:
             response = client.get(url)
             response.raise_for_status()

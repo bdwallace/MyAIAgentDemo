@@ -1,13 +1,18 @@
 """Model Layer · 文本向量。
 
 聊天走 LLM；检索走另一套 embedding。DeepSeek 没有官方 embeddings，
-V0.6 默认用本机 bge-small-zh（modelscope 下载）。若配置了
+V0.6 默认用本机 bge-small-zh（modelscope）。若配置了
 EMBEDDING_BASE_URL，则改走 OpenAI 兼容的 /v1/embeddings。
+
+本机权重在 Gateway 启动时 warmup，不要等到第一条对话。
+缓存已在时直接读磁盘，不再走 snapshot_download。
 """
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
+from pathlib import Path
 
 import httpx
 import torch
@@ -33,6 +38,41 @@ def embedding_backend() -> str:
     return "local-bge"
 
 
+def _modelscope_snapshot_dir() -> Path:
+    model_id = settings.embedding_model.replace("/", "--")
+    cache = os.environ.get("MODELSCOPE_CACHE")
+    root = Path(cache) if cache else Path.home() / ".cache" / "modelscope"
+    return root / "models" / model_id / "snapshots" / "master"
+
+
+def _ensure_local_model_dir() -> str:
+    """缓存齐全则只用本地目录；否则才调用 ModelScope 下载。"""
+    local = _modelscope_snapshot_dir()
+    if (local / "config.json").is_file():
+        return str(local)
+    from modelscope import snapshot_download
+
+    print(f"正在下载 embedding 模型 {settings.embedding_model} …")
+    return snapshot_download(settings.embedding_model)
+
+
+@lru_cache(maxsize=1)
+def _local_pair():
+    path = _ensure_local_model_dir()
+    tokenizer = AutoTokenizer.from_pretrained(path)
+    model = AutoModel.from_pretrained(path)
+    model.eval()
+    return tokenizer, model
+
+
+def warmup_embeddings() -> str:
+    """部署时调用：HTTP 后端跳过；本机 bge 则加载进内存。"""
+    if _http_base():
+        return "openai-compat"
+    _local_pair()
+    return str(_modelscope_snapshot_dir())
+
+
 def embed_texts(texts: list[str], *, is_query: bool = False) -> list[list[float]]:
     if not texts:
         return []
@@ -45,17 +85,6 @@ def embed_texts(texts: list[str], *, is_query: bool = False) -> list[list[float]
 def embed_query(text: str) -> list[float]:
     rows = embed_texts([text], is_query=True)
     return rows[0] if rows else []
-
-
-@lru_cache(maxsize=1)
-def _local_pair():
-    from modelscope import snapshot_download
-
-    path = snapshot_download(settings.embedding_model)
-    tokenizer = AutoTokenizer.from_pretrained(path)
-    model = AutoModel.from_pretrained(path)
-    model.eval()
-    return tokenizer, model
 
 
 def _mean_pool(last_hidden: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:

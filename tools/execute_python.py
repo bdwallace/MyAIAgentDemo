@@ -5,18 +5,17 @@ from __future__ import annotations
 import subprocess
 import sys
 import uuid
-from pathlib import Path
 
 from langchain_core.tools import tool
 
 from config import settings
+from tools.sandbox import sandbox_root
 
 
 @tool
 def execute_python(code: str) -> str:
-    """执行 Python 代码并返回 stdout/stderr。计算、写小脚本时使用。需要看到结果请 print。"""
-    sandbox: Path = settings.sandbox_dir
-    sandbox.mkdir(parents=True, exist_ok=True)
+    """执行 Python 代码并返回 stdout/stderr。计算、写小脚本时使用。需要看到结果请 print。工作目录是 sandbox/。"""
+    sandbox = sandbox_root()
     script = sandbox / f"run_{uuid.uuid4().hex}.py"
     script.write_text(code, encoding="utf-8")
     try:

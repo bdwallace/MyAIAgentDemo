@@ -32,7 +32,9 @@ class Settings(BaseSettings):
     max_history_messages: int = 20
     max_memories_in_prompt: int = 30
     python_timeout_seconds: int = 15
+    shell_timeout_seconds: int = 15
     web_timeout_seconds: int = 15
+    graph_recursion_limit: int = 32
     sandbox_dir: Path = ROOT_DIR / "sandbox"
 
     # RAG。embedding_base_url 为空则用本机 bge-small-zh（modelscope）。

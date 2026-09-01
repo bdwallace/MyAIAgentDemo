@@ -102,7 +102,7 @@ V0.6
 RAG + pgvector
        ↓
 V1
-完整 Tool System
+完整 Tool System(简易沙箱)
        ↓
 V1.5
 Redis + Celery
@@ -117,7 +117,7 @@ V4
 Multi-Agent / Distributed
 ```
 
-请求怎么从浏览器走到模型、LangGraph 每个节点做什么：见 `docs/请求流程.md`。
+请求怎么从浏览器走到模型、LangGraph 每个节点做什么：见 `系统文档.md`。
 
 三、V0 怎么跑
 
@@ -132,54 +132,37 @@ Multi-Agent / Distributed
   tools/          → Tool Runtime（外部工具 + remember / recall / forget）
 
 1. 启动 Postgres（Docker + pgvector）
-
   安装 Docker Desktop，然后在项目根目录：
-
     docker compose up -d
-
   容器内是 PostgreSQL 16 + vector 扩展。本机 Windows 若已装 PG 18，5432 已被占用，
   所以映射到 **5433**。`.env` 里保持：
-
     PG_HOST=127.0.0.1
     PG_PORT=5433
     PG_USER=agent
     PG_PASSWORD=@Root123456
     PG_DATABASE=private_agent
-
   第一次启动会建空库；Gateway 起来后会自动建表并灌入 `docs/knowledge`。
-
 2. 安装并配置
-
   python -m venv .venv
-  .\.venv\Scripts\Activate.ps1
+  .venv\Scripts\Activate.ps1
   pip install -r requirements.txt
   copy .env.example .env
-
   模型走 OpenAI 兼容协议，本地和云端只改这三项：
-
     LLM_BASE_URL
     LLM_API_KEY
     LLM_MODEL
-
   本地（Ollama 跑 OpenAI 公开权重 gpt-oss）：
-
     ollama pull gpt-oss:20b
     .env:
-      LLM_BASE_URL=http://127.0.0.1:11434/v1
+      LLM_BASE_URL=[http://127.0.0.1:11434/v1](http://127.0.0.1:11434/v1)
       LLM_API_KEY=local
       LLM_MODEL=gpt-oss:20b
-
   LM Studio 把 Local Server 打开后，端口一般是 1234。
   云端 DeepSeek / OpenAI 则填官方 base_url 和真实 API Key。
-
   本地模型尽量选支持 tool calling 的（gpt-oss、Qwen2.5、Llama 3.1），V0 的三个工具才调得起来。
-
 3. 启动 Gateway
-
   python run.py
-
-  打开 http://127.0.0.1:8080
-
+  打开 [http://127.0.0.1:8080](http://127.0.0.1:8080)
   本地 Hugging Face `transformers serve` 占用 8000，所以 Gateway 用 8080。
 
 四、V0.5 多了什么
@@ -197,9 +180,9 @@ Multi-Agent / Distributed
 
 怎么验证：
 
-  1. 说「记住：我叫阿旺，住在杭州」
-  2. 左侧「长期记忆」出现条目
-  3. 点「新对话」，问「我住哪？」——不应再问你一次
+1. 说「记住：我叫阿旺，住在杭州」
+2. 左侧「长期记忆」出现条目
+3. 点「新对话」，问「我住哪？」——不应再问你一次
 
 本轮相对 V0：长期记忆。V0.6 才是 RAG。
 
@@ -224,9 +207,29 @@ Multi-Agent / Distributed
 
 怎么验证：
 
-  1. 打开 http://127.0.0.1:8080 ，左侧应出现《内部手册》
-  2. 新对话问「知识库里的暗号是什么？不要搜网。」
-  3. 应答「落叶归根」，且不应去 search_web
+1. 打开 [http://127.0.0.1:8080](http://127.0.0.1:8080) ，左侧应出现《内部手册》
+2. 新对话问「知识库里的暗号是什么？不要搜网。」
+3. 应答「落叶归根」，且不应去 search_web
 
 可选：.env 里配 EMBEDDING_BASE_URL 走云端 embedding；留空则本机下载 BAAI/bge-small-zh-v1.5（第一次较慢）。
 
+六、V1 多了什么
+
+范围：完整 Tool System。不是再堆几个 @tool，而是先有注册表，再按 README 的 Tool Runtime 补齐组。
+
+  tools/registry.py  → 分组登记，ALL_TOOLS 从这里拼；Graph 不要手写工具列表
+  tools/sandbox.py   → 路径必须落在 sandbox/
+  新增组：
+    文件  list_dir / read_file / write_file / delete_file
+    代码  execute_shell（Python 原本就有）
+    Git   git_init / git_status / git_log / git_diff / git_commit
+  未做：Trading API（要独立密钥，不进 V1）
+
+怎么验证：
+
+1. 页面副标题为 V1，状态行显示工具数量
+2. 「写 hello-v1.txt 再 list_dir」→ 侧栏工具块出现 write_file / list_dir
+3. sandbox/ 里能看到该文件
+4. 「git_init 然后 git_status」→ 需要本机已安装 Git
+
+V1.5 才是 Redis + Celery，本轮没有任务队列。

@@ -1,18 +1,5 @@
-"""Tool Runtime · V0 外部工具；V0.5 长期记忆；V0.6 知识库检索。"""
+"""Tool Runtime · 从注册表导出。完整分组见 tools/registry.py。"""
 
-from tools.browse_page import browse_page
-from tools.execute_python import execute_python
-from tools.memory import forget, recall, remember
-from tools.rag import ingest_doc, search_docs
-from tools.search_web import search_web
+from tools.registry import ALL_TOOLS, catalog
 
-ALL_TOOLS = [
-    search_web,
-    browse_page,
-    execute_python,
-    remember,
-    recall,
-    forget,
-    search_docs,
-    ingest_doc,
-]
+__all__ = ["ALL_TOOLS", "catalog"]

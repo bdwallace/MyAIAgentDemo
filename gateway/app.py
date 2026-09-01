@@ -51,7 +51,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="MyAiAgent Gateway V0.6", lifespan=lifespan)
+app = FastAPI(title="MyAiAgent Gateway V1", lifespan=lifespan)
 CLIENT_DIR = ROOT_DIR / "clients" / "web"
 app.mount("/static", StaticFiles(directory=CLIENT_DIR), name="static")
 
@@ -86,7 +86,7 @@ async def health():
         db_ok = False
     llm = inspect_llm()
     from model.embed import embedding_backend
-    from tools import ALL_TOOLS
+    from tools import ALL_TOOLS, catalog
 
     return {
         "ok": db_ok and llm["ready"],
@@ -95,6 +95,7 @@ async def health():
         "has_api_key": True if llm["local"] else bool(settings.llm_api_key),
         "model": settings.llm_model,
         "tools": [t.name for t in ALL_TOOLS],
+        "tool_groups": catalog(),
         "memories": memory_count(),
         "rag": {
             "pgvector": pgvector_available(),
@@ -102,6 +103,13 @@ async def health():
             "embedding": embedding_backend(),
         },
     }
+
+
+@app.get("/api/tools")
+async def api_tools():
+    from tools import catalog
+
+    return catalog()
 
 
 @app.get("/api/conversations")
@@ -264,6 +272,7 @@ async def api_chat(req: ChatRequest, request: Request):
                 async for event in GRAPH.astream_events(
                     {"messages": history},
                     version="v2",
+                    config={"recursion_limit": settings.graph_recursion_limit},
                 ):
                     if cancel.is_set():
                         break

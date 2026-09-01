@@ -77,6 +77,13 @@ def init_db() -> None:
             "PostgreSQL 没有 vector 扩展。先在项目根目录执行: docker compose up -d"
         )
     Base.metadata.create_all(engine)
+    from model.embed import warmup_embeddings
+
+    try:
+        path = warmup_embeddings()
+        print(f"embedding 已就绪：{path}")
+    except Exception as exc:
+        print(f"embedding 预热失败（第一条对话会再试）：{exc}")
     try:
         _rag.seed_knowledge_if_empty()
     except Exception as exc:

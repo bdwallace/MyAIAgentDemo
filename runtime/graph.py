@@ -1,10 +1,10 @@
 """Agent Runtime · LangGraph 循环。
 
 V0 没有独立 Planner：LLM 自己决定是否调用工具。
-V0.5 注入长期记忆；V0.6 再按当前问题检索知识库（runtime/rag.py）。
+V0.6 再按当前问题检索知识库；V1 工具走 tools/registry.py 分组登记。
 
 reason 是「推理」不是「原因」，来自 ReAct：想一轮 → 动手 → 看结果 → 再想。
-图解与整条请求链路见 docs/请求流程.md。
+图解与整条请求链路见 系统文档.md。
 """
 
 from __future__ import annotations
@@ -60,11 +60,17 @@ def build_graph():
     """
     graph = StateGraph(AgentState)
     graph.add_node("reason", reason)
-    graph.add_node("tools", ToolNode(ALL_TOOLS))  # 只执行工具，不思考
-    graph.add_edge(START, "reason")  # 每条用户消息固定先想一轮
+    # 只执行工具，不思考
+    graph.add_node("tools", ToolNode(ALL_TOOLS)) 
+
+    # 每条用户消息固定先想一轮
+    graph.add_edge(START, "reason")  
+
     # tools_condition 不是节点，是路由器：有 tool_calls 去 tools，否则 END
     graph.add_conditional_edges("reason", tools_condition)
-    graph.add_edge("tools", "reason")  # 观察结果后必须再 reason，才能开口回答
+
+    # 观察结果后必须再 reason，才能开口回答
+    graph.add_edge("tools", "reason")  
     return graph.compile()
 
 
