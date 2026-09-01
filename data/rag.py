@@ -104,6 +104,9 @@ def ingest_document(title: str, content: str, source: str = "") -> dict[str, Any
         for i, (piece, vec) in enumerate(zip(chunks, vectors)):
             session.add(Chunk(document_id=doc.id, ordinal=i, content=piece, embedding=vec))
         session.commit()
+        from data.cache import bump_rag_cache
+
+        bump_rag_cache()
         return _as_doc(doc, chunk_n=len(chunks))
 
 
@@ -126,6 +129,9 @@ def delete_document(document_id: int) -> bool:
             return False
         session.delete(row)
         session.commit()
+        from data.cache import bump_rag_cache
+
+        bump_rag_cache()
         return True
 
 
@@ -135,11 +141,20 @@ def chunk_count() -> int:
 
 
 def search_chunks(query: str, limit: int | None = None) -> list[dict[str, Any]]:
-    """问题编成向量，用 pgvector <=> 按余弦距离取 top-k。"""
+    """问题编成向量，用 pgvector <=> 按余弦距离取 top-k。命中会进 Redis 短缓存。"""
     query = (query or "").strip()
     if not query:
         return []
     k = limit or settings.rag_top_k
+    import hashlib
+
+    from data.cache import cache_get, cache_set, rag_epoch
+
+    cache_key = f"rag:{rag_epoch()}:{hashlib.sha256(query.encode()).hexdigest()[:16]}:{k}"
+    cached = cache_get(cache_key)
+    if isinstance(cached, list):
+        return cached
+
     from model.embed import embed_query
 
     qvec = embed_query(query)
@@ -163,6 +178,7 @@ def search_chunks(query: str, limit: int | None = None) -> list[dict[str, Any]]:
                     "score": round(score, 4),
                 }
             )
+        cache_set(cache_key, out, settings.rag_cache_ttl_seconds)
         return out
 
 

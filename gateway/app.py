@@ -30,7 +30,6 @@ from data.memory import delete_memory, list_memories, memory_count
 from data.rag import (
     chunk_count,
     delete_document,
-    ingest_document,
     list_documents,
     pgvector_available,
 )
@@ -44,14 +43,19 @@ async def lifespan(_app: FastAPI):
     try:
         init_db()
         ping()
+        from data.cache import ping as redis_ping
+
+        if not redis_ping():
+            raise RuntimeError("Redis 连不上")
     except Exception as exc:
         raise RuntimeError(
-            "PostgreSQL 连不上。先在项目根目录执行: docker compose up -d（端口 5433）"
+            "PostgreSQL 或 Redis 连不上。先在项目根目录执行: docker compose up -d"
+            "（Postgres 5433，Redis 6379）"
         ) from exc
     yield
 
 
-app = FastAPI(title="MyAiAgent Gateway V1", lifespan=lifespan)
+app = FastAPI(title="MyAiAgent Gateway V1.5", lifespan=lifespan)
 CLIENT_DIR = ROOT_DIR / "clients" / "web"
 app.mount("/static", StaticFiles(directory=CLIENT_DIR), name="static")
 
@@ -85,12 +89,16 @@ async def health():
     except Exception:
         db_ok = False
     llm = inspect_llm()
+    from data.cache import ping as redis_ping
     from model.embed import embedding_backend
     from tools import ALL_TOOLS, catalog
+    from worker.jobs import celery_alive
 
     return {
         "ok": db_ok and llm["ready"],
         "postgres": db_ok,
+        "redis": redis_ping(),
+        "celery": celery_alive(),
         "llm": llm,
         "has_api_key": True if llm["local"] else bool(settings.llm_api_key),
         "model": settings.llm_model,
@@ -151,12 +159,21 @@ async def api_documents():
 
 @app.post("/api/documents")
 async def api_ingest(req: IngestRequest):
+    from worker.jobs import enqueue_ingest
+
     try:
-        return await asyncio.to_thread(
-            ingest_document, req.title.strip(), req.content, "ui"
-        )
+        return enqueue_ingest(req.title.strip(), req.content, "ui")
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(503, f"任务队列不可用：{exc}") from exc
+
+
+@app.get("/api/jobs/{job_id}")
+async def api_job(job_id: str):
+    from worker.jobs import job_status
+
+    return job_status(job_id)
 
 
 @app.delete("/api/documents/{document_id}")

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MyAiAgent V1</title>
+  <title>MyAiAgent V1.5</title>
   <script src="/static/vendor/vue.global.prod.js"></script>
   <script src="/static/vendor/marked.min.js"></script>
   <style>
@@ -70,8 +70,8 @@
   <div id="app">
     <aside>
       <h1>MyAiAgent</h1>
-      <div class="sub">V1 · 完整 Tool System</div>
-      <p class="tiny"><i class="dot" :class="{ok: health.ok}"></i>{{ llmLabel }} · PG {{ health.postgres ? 'ok' : 'down' }} · 工具 {{ (health.tools||[]).length }}</p>
+      <div class="sub">V1.5 · Redis + Celery</div>
+      <p class="tiny"><i class="dot" :class="{ok: health.ok}"></i>{{ llmLabel }} · PG {{ health.postgres ? 'ok' : 'down' }} · Redis {{ health.redis ? 'ok' : 'down' }} · Celery {{ health.celery ? 'ok' : 'down' }}</p>
       <button class="new" @click="newChat">新对话</button>
       <div class="list">
         <div class="conv" :class="{on: c.id===conversationId}" v-for="c in conversations" :key="c.id">
@@ -101,7 +101,7 @@
         </div>
         <input class="item" style="width:100%;margin:6px 0" v-model="docTitle" placeholder="标题" />
         <textarea v-model="docDraft" placeholder="粘贴正文后点入库" style="width:100%;height:56px;margin:0 0 6px"></textarea>
-        <button class="new" style="margin:0" :disabled="!docDraft.trim() || ingesting" @click="ingestDoc">{{ ingesting ? '向量化中…' : '入库' }}</button>
+        <button class="new" style="margin:0" :disabled="!docDraft.trim() || ingesting" @click="ingestDoc">{{ ingesting ? '排队中…' : '入库' }}</button>
       </div>
     </aside>
     <main>
@@ -111,8 +111,8 @@
       </div>
       <div class="log" ref="log">
         <div v-if="!messages.length" class="empty">
-          <h2>V1：工具分组登记，文件 / Shell / Git 都在 sandbox/。</h2>
-          <p class="sub">点下面试知识库、写文件，或在沙箱里 git init。</p>
+          <h2>V1.5：入库走 Celery，检索可走 Redis 缓存。</h2>
+          <p class="sub">侧栏入库会排队；聊天仍是 Gateway 上的 SSE。点下面试知识库或沙箱。</p>
           <button class="chip" v-for="ex in examples" :key="ex" @click="draft=ex; send()">{{ ex }}</button>
         </div>
         <div class="msg" v-for="(m,i) in messages" :key="i">
@@ -140,7 +140,7 @@
     const { createApp, ref, computed, onMounted, nextTick } = Vue;
     createApp({
       setup() {
-        const health = ref({ ok:false, postgres:false, has_api_key:false, model:'', llm:{} });
+        const health = ref({ ok:false, postgres:false, redis:false, celery:false, has_api_key:false, model:'', llm:{} });
         const conversations = ref([]);
         const conversationId = ref(null);
         const messages = ref([]);
@@ -232,14 +232,32 @@
               headers: {'Content-Type':'application/json'},
               body: JSON.stringify({ title: docTitle.value.trim() || '未命名文档', content })
             });
+            const data = await res.json().catch(()=>({}));
             if (!res.ok) {
-              const err = await res.json().catch(()=>({detail:res.statusText}));
-              alert('入库失败：' + (err.detail || ''));
+              alert('入库失败：' + (data.detail || res.statusText));
               return;
             }
-            docTitle.value = '';
-            docDraft.value = '';
-            await loadDocs();
+            if (!data.job_id) {
+              docTitle.value = '';
+              docDraft.value = '';
+              await loadDocs();
+              return;
+            }
+            for (let i = 0; i < 90; i++) {
+              const job = await (await fetch('/api/jobs/' + data.job_id)).json();
+              if (job.status === 'SUCCESS') {
+                docTitle.value = '';
+                docDraft.value = '';
+                await loadDocs();
+                return;
+              }
+              if (job.status === 'FAILURE') {
+                alert('入库失败：' + (job.error || ''));
+                return;
+              }
+              await new Promise((r) => setTimeout(r, 1000));
+            }
+            alert('入库超时。请另开终端运行 .\\scripts\\run_worker.ps1');
           } catch (e) {
             alert('入库失败：' + (e && e.message ? e.message : e));
           } finally {
