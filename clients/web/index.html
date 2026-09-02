@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MyAiAgent V1.5</title>
+  <title>MyAiAgent V2</title>
   <script src="/static/vendor/vue.global.prod.js"></script>
   <script src="/static/vendor/marked.min.js"></script>
   <style>
@@ -70,7 +70,7 @@
   <div id="app">
     <aside>
       <h1>MyAiAgent</h1>
-      <div class="sub">V1.5 · Redis + Celery</div>
+      <div class="sub">V2 · Django + DRF Gateway</div>
       <p class="tiny"><i class="dot" :class="{ok: health.ok}"></i>{{ llmLabel }} · PG {{ health.postgres ? 'ok' : 'down' }} · Redis {{ health.redis ? 'ok' : 'down' }} · Celery {{ health.celery ? 'ok' : 'down' }}</p>
       <button class="new" @click="newChat">新对话</button>
       <div class="list">
@@ -111,8 +111,8 @@
       </div>
       <div class="log" ref="log">
         <div v-if="!messages.length" class="empty">
-          <h2>V1.5：入库走 Celery，检索可走 Redis 缓存。</h2>
-          <p class="sub">侧栏入库会排队；聊天仍是 Gateway 上的 SSE。点下面试知识库或沙箱。</p>
+          <h2>V2：Gateway 换成 Django + DRF，聊天仍是 SSE。</h2>
+          <p class="sub">接口路径没变。点下面试知识库、写文件，或在沙箱里 git init。</p>
           <button class="chip" v-for="ex in examples" :key="ex" @click="draft=ex; send()">{{ ex }}</button>
         </div>
         <div class="msg" v-for="(m,i) in messages" :key="i">

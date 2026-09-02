@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     redis_url: str = "redis://127.0.0.1:6379/0"
     rag_cache_ttl_seconds: int = 60
 
+    # Django Gateway。学习用默认值，正式环境请改 .env
+    django_secret_key: str = "dev-only-myaiagent-gateway"
+
 
 settings = Settings()
 settings.sandbox_dir.mkdir(parents=True, exist_ok=True)

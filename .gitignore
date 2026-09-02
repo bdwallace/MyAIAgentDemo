@@ -8,4 +8,5 @@ sandbox/*
 !sandbox/.gitkeep
 !sandbox/README.txt
 celerybeat-schedule
+.django-unused.sqlite3
 

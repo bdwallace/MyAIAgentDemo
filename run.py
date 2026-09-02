@@ -1,10 +1,14 @@
+import os
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "gateway.settings")
+
 import uvicorn
 
 from config import ROOT_DIR, settings
 
 if __name__ == "__main__":
     uvicorn.run(
-        "gateway.app:app",
+        "gateway.asgi:application",
         host=settings.host,
         port=settings.port,
         reload=True,

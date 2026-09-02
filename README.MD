@@ -125,7 +125,7 @@ Multi-Agent / Distributed
   对应目录：
 
   clients/web     → Clients
-  gateway/        → Agent Gateway（FastAPI 临时；V2 换成 Django）
+  gateway/        → Agent Gateway（V2 起 Django + DRF；ASGI 跑 SSE）
   runtime/        → Agent Runtime（LangGraph Loop + Memory 装配）
   model/          → Model Layer
   data/           → Data Layer（会话 + memories 表）
@@ -268,3 +268,22 @@ Multi-Agent / Distributed
 1. 状态行 Redis ok、Celery ok（worker 没开则 Celery down，聊天仍可用）
 2. 侧栏粘贴一段文字点入库 → 按钮显示「排队中…」，完成后文档列表出现
 3. 新对话问刚才那段内容，应能召回；同一问题短期内再问，走 Redis 缓存（入库/删文档会 bump epoch 让缓存失效）
+
+八、V2 多了什么
+
+范围：Gateway 从 FastAPI 换成 Django + DRF。Runtime / Data / Celery / 前端路径都不动。
+
+  gateway/settings.py  → Django 设置（SECRET、静态文件、DRF）
+  gateway/urls.py      → 仍是 /api/health、/api/chat、会话、记忆、文档、jobs
+  gateway/api.py       → DRF APIView
+  gateway/chat.py      → ASGI 上的 SSE（uvicorn gateway.asgi:application）
+  manage.py            → Django 管理命令；日常启动仍是 python run.py
+
+会话、记忆、RAG 表继续用 SQLAlchemy（data/），不迁 Django ORM。Auth / 多端路由仍留给后面。
+
+怎么验证：
+
+1. 页面副标题为 V2 · Django + DRF Gateway
+2. GET /api/health 仍返回 postgres / redis / celery
+3. 发一条消息能流式出字；点终止仍走 POST /api/conversations/{id}/stop
+4. 侧栏入库仍是排队 + 轮询 /api/jobs/{id}
