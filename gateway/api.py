@@ -30,6 +30,7 @@ async def api_health(_request):
     from model.embed import embedding_backend
     from model.llm import inspect_llm
     from tools import ALL_TOOLS, catalog
+    from tools.sandbox import jail_status
     from worker.jobs import celery_alive
 
     db_ok = False
@@ -44,6 +45,7 @@ async def api_health(_request):
             "postgres": db_ok,
             "redis": redis_ping(),
             "celery": celery_alive(),
+            "sandbox": jail_status(),
             "llm": llm,
             "has_api_key": True if llm["local"] else bool(settings.llm_api_key),
             "model": settings.llm_model,

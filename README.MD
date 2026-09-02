@@ -131,7 +131,7 @@ Multi-Agent / Distributed
   data/           → Data Layer（会话 + memories 表）
   tools/          → Tool Runtime（外部工具 + remember / recall / forget）
 
-1. 启动 Docker（Postgres + Redis）
+1. 启动 Docker（Postgres + Redis + 沙箱容器）
   安装 Docker Desktop，然后在项目根目录：
     docker compose up -d
   容器内是 PostgreSQL 16 + vector 扩展，以及 Redis 7。本机 Windows 若已装 PG 18，5432 已被占用，
@@ -220,7 +220,7 @@ Multi-Agent / Distributed
 范围：完整 Tool System。不是再堆几个 @tool，而是先有注册表，再按 README 的 Tool Runtime 补齐组。
 
   tools/registry.py  → 分组登记，ALL_TOOLS 从这里拼；Graph 不要手写工具列表
-  tools/sandbox.py   → 路径必须落在 sandbox/
+  tools/sandbox.py   → 路径牢 + Docker 进程隔离（安全沙箱）
   新增组：
     文件  list_dir / read_file / write_file / delete_file
     代码  execute_shell（Python 原本就有）
@@ -232,7 +232,7 @@ Multi-Agent / Distributed
 1. 页面副标题为 V1，状态行显示工具数量
 2. 「写 hello-v1.txt 再 list_dir」→ 侧栏工具块出现 write_file / list_dir
 3. sandbox/ 里能看到该文件
-4. 「git_init 然后 git_status」→ 需要本机已安装 Git
+4. 「git_init 然后 git_status」→ Git 在沙箱容器里跑，不依赖本机是否装 Git
 
 七、V1.5 多了什么
 
@@ -287,3 +287,24 @@ Multi-Agent / Distributed
 2. GET /api/health 仍返回 postgres / redis / celery
 3. 发一条消息能流式出字；点终止仍走 POST /api/conversations/{id}/stop
 4. 侧栏入库仍是排队 + 轮询 /api/jobs/{id}
+
+九、安全沙箱
+
+V1 的 sandbox 只是路径牢：命令仍在宿主机跑，黑名单挡不住 `python -c` 读项目外的文件。
+现在 Python / Shell / Git 进 Docker 容器：
+
+  能出网（Docker bridge），但不加入 Postgres/Redis 的 compose 网络
+  只读根文件系统，只挂 sandbox/ → /workspace
+  丢掉全部 Linux capability，no-new-privileges
+  内存 256MB、最多 128 进程
+  不传入宿主机环境变量，不挂 Docker socket
+
+文件工具仍在 Gateway 进程里读写，但绝对路径 / UNC / `..` 会被拒绝。
+`docker compose up -d --build` 会带上 `myaiagent-sandbox`。状态行 Jail ok 表示容器在跑。
+
+怎么验证：
+
+1. 让 Agent `execute_python` 打印 1+1 → 容器内出 2
+2. 让它读 `/etc/passwd` 只能看到容器自己的，不是 Windows 主机
+3. 让它读项目根目录的 `.env` 应失败（工作区外）
+4. 容器内可以访问公网；用服务名访问 postgres/redis 应失败

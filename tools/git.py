@@ -1,60 +1,32 @@
-"""Tool Runtime · 在 sandbox 里操作 Git。仓库不存在时先 git_init。"""
+"""在隔离容器里操作 sandbox 的 Git。不依赖宿主机是否安装 Git。"""
 
 from __future__ import annotations
-
-import os
-import shutil
-import subprocess
 
 from langchain_core.tools import tool
 
 from config import settings
-from tools.sandbox import sandbox_root
-
-
-def _git_env() -> dict[str, str]:
-    env = os.environ.copy()
-    env.setdefault("GIT_AUTHOR_NAME", "MyAiAgent")
-    env.setdefault("GIT_AUTHOR_EMAIL", "agent@localhost")
-    env.setdefault("GIT_COMMITTER_NAME", "MyAiAgent")
-    env.setdefault("GIT_COMMITTER_EMAIL", "agent@localhost")
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    return env
+from tools.sandbox import run_in_jail, sandbox_root
 
 
 def _run_git(*args: str) -> str:
-    git = shutil.which("git")
-    if not git:
-        return "本机没有 git 命令，请先安装 Git for Windows。"
-    try:
-        completed = subprocess.run(
-            [git, *args],
-            cwd=str(sandbox_root()),
-            capture_output=True,
-            text=True,
-            timeout=settings.shell_timeout_seconds,
-            encoding="utf-8",
-            errors="replace",
-            env=_git_env(),
-        )
-    except subprocess.TimeoutExpired:
-        return f"git 超时（>{settings.shell_timeout_seconds}s）"
-    parts = []
-    if completed.stdout.strip():
-        parts.append(completed.stdout.strip())
-    if completed.stderr.strip():
-        parts.append(completed.stderr.strip())
-    body = "\n".join(parts) or "（无输出）"
-    if completed.returncode != 0:
-        return f"git {' '.join(args)} 失败（exit {completed.returncode}）\n{body}"[:8000]
-    return body[:8000]
+    return run_in_jail(
+        ["git", *args],
+        timeout=settings.shell_timeout_seconds,
+        extra_env={
+            "GIT_AUTHOR_NAME": "MyAiAgent",
+            "GIT_AUTHOR_EMAIL": "agent@localhost",
+            "GIT_COMMITTER_NAME": "MyAiAgent",
+            "GIT_COMMITTER_EMAIL": "agent@localhost",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+        },
+    )
 
 
 @tool
 def git_init() -> str:
     """在 sandbox/ 初始化 git 仓库。已经是仓库则直接说明。"""
-    git_dir = sandbox_root() / ".git"
-    if git_dir.exists():
+    if (sandbox_root() / ".git").exists():
         return "sandbox/ 已经是 git 仓库。"
     return _run_git("init")
 
@@ -81,7 +53,9 @@ def git_diff() -> str:
 def git_commit(message: str) -> str:
     """把 sandbox 里所有改动 add 后提交。message 是提交说明。"""
     message = (message or "").strip() or "agent commit"
+    if "\x00" in message or "\n" in message:
+        return "提交说明不能包含换行。"
     added = _run_git("add", "-A")
-    if added.startswith("本机没有 git") or "失败" in added:
+    if added.startswith("本机没有") or added.startswith("沙箱") or added.startswith("exit "):
         return added
     return _run_git("commit", "-m", message)

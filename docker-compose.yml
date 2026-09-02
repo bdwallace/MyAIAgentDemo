@@ -30,5 +30,35 @@ services:
       timeout: 3s
       retries: 10
 
+  sandbox:
+    build:
+      context: ./docker/sandbox
+    image: myaiagent-sandbox:v1
+    container_name: myaiagent-sandbox
+    init: true
+    restart: unless-stopped
+    # 走 Docker 默认 bridge：能出网，但不进 compose 网（解析不到 postgres/redis）
+    network_mode: bridge
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: "1001:1001"  # redis 基础镜像已占用 uid 1000
+    working_dir: /workspace
+    volumes:
+      - ./sandbox:/workspace
+    command: ["sleep", "infinity"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "print(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   pgvector_data:

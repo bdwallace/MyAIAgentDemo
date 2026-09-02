@@ -1,7 +1,8 @@
-"""Tool Runtime · 沙箱文件系统。"""
+"""Tool Runtime · 沙箱文件系统。在 Gateway 进程里读写，但仍受路径牢约束。"""
 
 from langchain_core.tools import tool
 
+from config import settings
 from tools.sandbox import resolve_in_sandbox, sandbox_root
 
 
@@ -47,8 +48,15 @@ def write_file(path: str, content: str) -> str:
         target = resolve_in_sandbox(path)
     except ValueError as exc:
         return str(exc)
+    if target.exists() and target.is_dir():
+        return f"是目录，不能当文件写：{path}"
+    payload = content or ""
+    if len(payload.encode("utf-8")) > settings.sandbox_write_max_bytes:
+        return f"内容超过 {settings.sandbox_write_max_bytes} 字节，拒绝写入。"
+    if target == sandbox_root():
+        return "不能覆盖 sandbox 根目录。"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content or "", encoding="utf-8")
+    target.write_text(payload, encoding="utf-8")
     rel = target.relative_to(sandbox_root()).as_posix()
     return f"已写入 {rel}（{target.stat().st_size} 字节）"
 

@@ -71,7 +71,7 @@
     <aside>
       <h1>MyAiAgent</h1>
       <div class="sub">V2 · Django + DRF Gateway</div>
-      <p class="tiny"><i class="dot" :class="{ok: health.ok}"></i>{{ llmLabel }} · PG {{ health.postgres ? 'ok' : 'down' }} · Redis {{ health.redis ? 'ok' : 'down' }} · Celery {{ health.celery ? 'ok' : 'down' }}</p>
+      <p class="tiny"><i class="dot" :class="{ok: health.ok}"></i>{{ llmLabel }} · PG {{ health.postgres ? 'ok' : 'down' }} · Redis {{ health.redis ? 'ok' : 'down' }} · Celery {{ health.celery ? 'ok' : 'down' }} · Jail {{ health.sandbox && health.sandbox.ok ? 'ok' : 'down' }}</p>
       <button class="new" @click="newChat">新对话</button>
       <div class="list">
         <div class="conv" :class="{on: c.id===conversationId}" v-for="c in conversations" :key="c.id">
@@ -140,7 +140,7 @@
     const { createApp, ref, computed, onMounted, nextTick } = Vue;
     createApp({
       setup() {
-        const health = ref({ ok:false, postgres:false, redis:false, celery:false, has_api_key:false, model:'', llm:{} });
+        const health = ref({ ok:false, postgres:false, redis:false, celery:false, sandbox:{}, has_api_key:false, model:'', llm:{} });
         const conversations = ref([]);
         const conversationId = ref(null);
         const messages = ref([]);

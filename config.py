@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     web_timeout_seconds: int = 15
     graph_recursion_limit: int = 32
     sandbox_dir: Path = ROOT_DIR / "sandbox"
+    sandbox_container: str = "myaiagent-sandbox"
+    sandbox_image: str = "myaiagent-sandbox:v1"
+    sandbox_exec_user: str = "1001:1001"
+    sandbox_memory: str = "256m"
+    sandbox_write_max_bytes: int = 200_000
 
     # RAG。embedding_base_url 为空则用本机 bge-small-zh（modelscope）。
     embedding_base_url: str = ""

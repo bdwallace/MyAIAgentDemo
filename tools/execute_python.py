@@ -1,40 +1,29 @@
-"""在 sandbox/ 里跑 Python。V0 用子进程+超时，不是安全沙箱。"""
+"""在隔离容器里跑 Python。用的是容器解释器，看不到宿主机 .venv / .env。"""
 
 from __future__ import annotations
 
-import subprocess
-import sys
 import uuid
 
 from langchain_core.tools import tool
 
 from config import settings
-from tools.sandbox import sandbox_root
+from tools.sandbox import run_in_jail, sandbox_root
 
 
 @tool
 def execute_python(code: str) -> str:
-    """执行 Python 代码并返回 stdout/stderr。计算、写小脚本时使用。需要看到结果请 print。工作目录是 sandbox/。"""
+    """在安全沙箱里执行 Python 并返回 stdout/stderr。需要看到结果请 print。工作目录是 sandbox/。"""
+    code = code or ""
+    if len(code.encode("utf-8")) > settings.sandbox_write_max_bytes:
+        return f"代码超过 {settings.sandbox_write_max_bytes} 字节，拒绝执行。"
     sandbox = sandbox_root()
-    script = sandbox / f"run_{uuid.uuid4().hex}.py"
+    name = f"run_{uuid.uuid4().hex}.py"
+    script = sandbox / name
     script.write_text(code, encoding="utf-8")
     try:
-        completed = subprocess.run(
-            [sys.executable, str(script)],
-            cwd=str(sandbox),
-            capture_output=True,
-            text=True,
+        return run_in_jail(
+            ["python", f"/workspace/{name}"],
             timeout=settings.python_timeout_seconds,
-            encoding="utf-8",
-            errors="replace",
         )
-        parts = []
-        if completed.stdout.strip():
-            parts.append(completed.stdout.strip())
-        if completed.stderr.strip():
-            parts.append("[stderr]\n" + completed.stderr.strip())
-        return ("\n".join(parts) or "（无输出，请 print 结果）")[:8000]
-    except subprocess.TimeoutExpired:
-        return f"执行超时（>{settings.python_timeout_seconds}s）"
     finally:
         script.unlink(missing_ok=True)

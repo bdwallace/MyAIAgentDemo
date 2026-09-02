@@ -1,7 +1,8 @@
-sandbox/ 是 V1 工具的工作区。
+sandbox/ 是安全沙箱的工作区（容器内路径 /workspace）。
 
-list_dir / read_file / write_file / delete_file
-execute_python / execute_shell
-git_*
+文件工具：只能读写这个目录。
+execute_python / execute_shell / git_*：在 Docker 容器里跑。
+  能出网，但不进 Postgres/Redis 那张网；只读根文件系统、非 root、有内存和进程数上限。
+  看不到项目源码、.env、宿主机 Python。
 
-都不能读到这个目录外面。这不是安全沙箱，只是防止 Agent 随手改项目源码。
+先启动：docker compose up -d --build
