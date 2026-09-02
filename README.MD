@@ -131,17 +131,19 @@ Multi-Agent / Distributed
   data/           → Data Layer（会话 + memories 表）
   tools/          → Tool Runtime（外部工具 + remember / recall / forget）
 
-1. 启动 Postgres（Docker + pgvector）
+1. 启动 Docker（Postgres + Redis）
   安装 Docker Desktop，然后在项目根目录：
     docker compose up -d
-  容器内是 PostgreSQL 16 + vector 扩展。本机 Windows 若已装 PG 18，5432 已被占用，
-  所以映射到 **5433**。`.env` 里保持：
+  容器内是 PostgreSQL 16 + vector 扩展，以及 Redis 7。本机 Windows 若已装 PG 18，5432 已被占用，
+  所以 Postgres 映射到 **5433**，Redis 映射 **6379**。`.env` 里保持：
     PG_HOST=127.0.0.1
     PG_PORT=5433
     PG_USER=agent
     PG_PASSWORD=@Root123456
     PG_DATABASE=private_agent
+    REDIS_URL=redis://127.0.0.1:6379/0
   第一次启动会建空库；Gateway 起来后会自动建表并灌入 `docs/knowledge`。
+  V1.5 起 Gateway 启动会 ping Redis；文档入库还要另开终端跑 `.\scripts\run_worker.ps1`。
 2. 安装并配置
   python -m venv .venv
   .venv\Scripts\Activate.ps1
@@ -232,4 +234,37 @@ Multi-Agent / Distributed
 3. sandbox/ 里能看到该文件
 4. 「git_init 然后 git_status」→ 需要本机已安装 Git
 
-V1.5 才是 Redis + Celery，本轮没有任务队列。
+七、V1.5 多了什么
+
+范围：Redis + Celery。聊天 SSE 仍在 Gateway，不把会话搬进 Redis。
+
+  Redis（Docker）     → Celery broker / result backend + RAG 检索短缓存
+  Celery worker（本机）→ 文档入库（切块 + 向量化）。Worker 必须跟 Gateway 共用 .venv 和 modelscope 缓存，不要放进 Docker。
+  Windows 上 Celery 用 `--pool=solo`（默认 prefork 容易挂）
+
+对应文件：
+
+  docker-compose.yml     → 多了 redis 服务（本机 6379）
+  data/cache.py          → ping / RAG epoch / 短 TTL 缓存
+  worker/celery_app.py   → Celery 应用
+  worker/tasks.py        → ingest_document_task
+  worker/jobs.py         → 排队、查进度
+  scripts/run_worker.ps1 → 启动 worker
+
+聊天仍走 `POST /api/chat` 流式。入库变成：
+
+  POST /api/documents  → `{ job_id, status: queued }`
+  GET  /api/jobs/{id}  → PENDING / STARTED / SUCCESS / FAILURE
+
+怎么跑：
+
+1. `docker compose up -d`（Postgres 5433 + Redis 6379）
+2. `.env` 增加：`REDIS_URL=redis://127.0.0.1:6379/0`
+3. 另开终端：`.\scripts\run_worker.ps1`
+4. `python run.py`，打开 http://127.0.0.1:8080
+
+怎么验证：
+
+1. 状态行 Redis ok、Celery ok（worker 没开则 Celery down，聊天仍可用）
+2. 侧栏粘贴一段文字点入库 → 按钮显示「排队中…」，完成后文档列表出现
+3. 新对话问刚才那段内容，应能召回；同一问题短期内再问，走 Redis 缓存（入库/删文档会 bump epoch 让缓存失效）

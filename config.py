@@ -1,4 +1,4 @@
-"""V0 配置。以后 Redis、对象存储都在这里加，不要散落进业务代码。"""
+"""集中配置。Postgres / Redis / 模型地址都从这里读，不要散落进业务代码。"""
 
 from pathlib import Path
 
@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     rag_min_score: float = 0.35
     rag_chunk_size: int = 400
     rag_chunk_overlap: int = 60
+
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    rag_cache_ttl_seconds: int = 60
 
 
 settings = Settings()

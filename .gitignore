@@ -7,3 +7,5 @@ __pycache__/
 sandbox/*
 !sandbox/.gitkeep
 !sandbox/README.txt
+celerybeat-schedule
+
