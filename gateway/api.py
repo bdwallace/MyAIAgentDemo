@@ -46,6 +46,12 @@ async def api_health(_request):
             "redis": redis_ping(),
             "celery": celery_alive(),
             "sandbox": jail_status(),
+            "clients": [
+                {"id": "web", "run": "浏览器打开 Gateway 地址"},
+                {"id": "cli", "run": "python -m clients.cli"},
+                {"id": "desktop", "run": "python -m clients.desktop"},
+                {"id": "mobile", "run": "手机浏览器打开同一地址；局域网需 HOST=0.0.0.0"},
+            ],
             "llm": llm,
             "has_api_key": True if llm["local"] else bool(settings.llm_api_key),
             "model": settings.llm_model,

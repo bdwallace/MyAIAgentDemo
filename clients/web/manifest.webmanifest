@@ -1,0 +1,8 @@
+{
+  "name": "MyAiAgent",
+  "short_name": "Agent",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#13151c",
+  "theme_color": "#13151c"
+}

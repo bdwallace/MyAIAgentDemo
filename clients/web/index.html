@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MyAiAgent V2</title>
+  <title>MyAiAgent V3</title>
+  <link rel="manifest" href="/static/manifest.webmanifest" />
   <script src="/static/vendor/vue.global.prod.js"></script>
   <script src="/static/vendor/marked.min.js"></script>
   <style>
@@ -29,6 +30,9 @@
     .del:hover { color:#f3e6e6; background:rgba(196,92,92,.28); border-color:rgba(196,92,92,.45); }
     main { display:flex; flex-direction:column; min-width:0; }
     .topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 28px; border-bottom:1px solid var(--line); }
+    .topbar .left { display:flex; align-items:center; gap:8px; min-width:0; }
+    .menu { display:none; width:36px; flex:none; }
+    .scrim { display:none; }
     .topbar .name { font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .busy-tag { font-size:12px; color:var(--accent); flex:none; }
     .log { flex:1; overflow:auto; padding:24px 28px; }
@@ -61,16 +65,30 @@
     .mem:hover .del { opacity:1; }
     @media (max-width: 720px) {
       #app { grid-template-columns:1fr; }
-      aside { display:none; }
+      aside {
+        display:flex;
+        position:fixed;
+        inset:0 auto 0 0;
+        width:min(280px, 86vw);
+        z-index:20;
+        background:var(--bg);
+        transform:translateX(-105%);
+        transition:transform .2s ease;
+      }
+      aside.open { transform:translateX(0); }
+      .scrim { display:block; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:15; }
+      .menu { display:inline-block; }
+      .topbar, .log, .bar { padding-left:16px; padding-right:16px; }
     }
   </style>
 </head>
 <body>
   <p id="boot-error" style="display:none;padding:24px;color:#e8e6df">前端脚本没有加载到。请确认 Gateway 在 http://127.0.0.1:8080 打开，而不是直接双击 html。</p>
   <div id="app">
-    <aside>
+    <div class="scrim" v-if="menuOpen" @click="menuOpen=false"></div>
+    <aside :class="{open: menuOpen}">
       <h1>MyAiAgent</h1>
-      <div class="sub">V2 · Django + DRF Gateway</div>
+      <div class="sub">V3 · Web / CLI / 桌面 / 手机</div>
       <p class="tiny"><i class="dot" :class="{ok: health.ok}"></i>{{ llmLabel }} · PG {{ health.postgres ? 'ok' : 'down' }} · Redis {{ health.redis ? 'ok' : 'down' }} · Celery {{ health.celery ? 'ok' : 'down' }} · Jail {{ health.sandbox && health.sandbox.ok ? 'ok' : 'down' }}</p>
       <button class="new" @click="newChat">新对话</button>
       <div class="list">
@@ -106,13 +124,16 @@
     </aside>
     <main>
       <div class="topbar">
-        <span class="name">{{ currentTitle }}</span>
+        <div class="left">
+          <button class="menu item" @click="menuOpen=!menuOpen">菜单</button>
+          <span class="name">{{ currentTitle }}</span>
+        </div>
         <span class="busy-tag" v-if="busy">生成中 · Esc 终止</span>
       </div>
       <div class="log" ref="log">
         <div v-if="!messages.length" class="empty">
-          <h2>V2：Gateway 换成 Django + DRF，聊天仍是 SSE。</h2>
-          <p class="sub">接口路径没变。点下面试知识库、写文件，或在沙箱里 git init。</p>
+          <h2>V3：同一 Gateway，Web / CLI / 桌面 / 手机都能聊。</h2>
+          <p class="sub">终端：python -m clients.cli。桌面：python -m clients.desktop。手机点左上角菜单。</p>
           <button class="chip" v-for="ex in examples" :key="ex" @click="draft=ex; send()">{{ ex }}</button>
         </div>
         <div class="msg" v-for="(m,i) in messages" :key="i">
@@ -149,6 +170,7 @@
         const docTitle = ref('');
         const docDraft = ref('');
         const ingesting = ref(false);
+        const menuOpen = ref(false);
         const draft = ref('');
         const busy = ref(false);
         const log = ref(null);
@@ -178,31 +200,34 @@
           (bot.tools || []).forEach((t) => { if (t.status === 'running') t.status = 'stopped'; });
           if (isPlaceholder(bot.content)) bot.content = '已停止生成。';
         };
-        const loadHealth = async () => health.value = await (await fetch('/api/health')).json();
-        const loadCons = async () => conversations.value = await (await fetch('/api/conversations')).json();
-        const loadMems = async () => memories.value = await (await fetch('/api/memories')).json();
-        const loadDocs = async () => documents.value = await (await fetch('/api/documents')).json();
+        const hdr = (extra) => Object.assign({'X-Client':'web'}, extra || {});
+        const loadHealth = async () => health.value = await (await fetch('/api/health', { headers: hdr() })).json();
+        const loadCons = async () => conversations.value = await (await fetch('/api/conversations', { headers: hdr() })).json();
+        const loadMems = async () => memories.value = await (await fetch('/api/memories', { headers: hdr() })).json();
+        const loadDocs = async () => documents.value = await (await fetch('/api/documents', { headers: hdr() })).json();
         const stop = () => {
           const id = conversationId.value;
           if (abortCtl.value) abortCtl.value.abort();
-          if (id) fetch(`/api/conversations/${id}/stop`, { method: 'POST' });
+          if (id) fetch(`/api/conversations/${id}/stop`, { method: 'POST', headers: hdr() });
         };
         const newChat = () => {
           if (busy.value) stop();
           conversationId.value = null;
           messages.value = [];
+          menuOpen.value = false;
         };
         const open = async (id) => {
           if (busy.value) stop();
           conversationId.value = id;
-          messages.value = await (await fetch(`/api/conversations/${id}/messages`)).json();
+          menuOpen.value = false;
+          messages.value = await (await fetch(`/api/conversations/${id}/messages`, { headers: hdr() })).json();
           await scroll();
         };
         const removeConv = async (id, ev) => {
           if (ev) ev.stopPropagation();
           if (!confirm('删除这个会话？消息无法恢复。')) return;
           if (busy.value && conversationId.value === id) stop();
-          const res = await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
+          const res = await fetch(`/api/conversations/${id}`, { method: 'DELETE', headers: hdr() });
           if (!res.ok) {
             alert('删除失败');
             return;
@@ -215,7 +240,7 @@
         };
         const removeMem = async (id) => {
           if (!confirm('忘掉这条长期记忆？')) return;
-          const res = await fetch(`/api/memories/${id}`, { method: 'DELETE' });
+          const res = await fetch(`/api/memories/${id}`, { method: 'DELETE', headers: hdr() });
           if (!res.ok) {
             alert('删除失败');
             return;
@@ -229,7 +254,7 @@
           try {
             const res = await fetch('/api/documents', {
               method: 'POST',
-              headers: {'Content-Type':'application/json'},
+              headers: hdr({'Content-Type':'application/json'}),
               body: JSON.stringify({ title: docTitle.value.trim() || '未命名文档', content })
             });
             const data = await res.json().catch(()=>({}));
@@ -244,7 +269,7 @@
               return;
             }
             for (let i = 0; i < 90; i++) {
-              const job = await (await fetch('/api/jobs/' + data.job_id)).json();
+              const job = await (await fetch('/api/jobs/' + data.job_id, { headers: hdr() })).json();
               if (job.status === 'SUCCESS') {
                 docTitle.value = '';
                 docDraft.value = '';
@@ -266,7 +291,7 @@
         };
         const removeDoc = async (id) => {
           if (!confirm('从知识库删掉这篇？')) return;
-          const res = await fetch(`/api/documents/${id}`, { method: 'DELETE' });
+          const res = await fetch(`/api/documents/${id}`, { method: 'DELETE', headers: hdr() });
           if (!res.ok) {
             alert('删除失败');
             return;
@@ -286,7 +311,7 @@
           try {
             const res = await fetch('/api/chat', {
               method:'POST',
-              headers:{'Content-Type':'application/json'},
+              headers: hdr({'Content-Type':'application/json'}),
               body: JSON.stringify({ message:text, conversation_id: conversationId.value }),
               signal: abortCtl.value.signal
             });
@@ -346,7 +371,7 @@
             if (e.key === 'Escape' && busy.value) stop();
           });
         });
-        return { health, llmLabel, currentTitle, conversations, conversationId, messages, memories, documents, docTitle, docDraft, ingesting, draft, busy, log, examples, render, newChat, open, send, stop, removeConv, removeMem, ingestDoc, removeDoc };
+        return { health, llmLabel, currentTitle, conversations, conversationId, messages, memories, documents, docTitle, docDraft, ingesting, menuOpen, draft, busy, log, examples, render, newChat, open, send, stop, removeConv, removeMem, ingestDoc, removeDoc };
       }
     }).mount('#app');
     }

@@ -7,7 +7,7 @@ from config import ROOT_DIR, settings as app
 BASE_DIR = ROOT_DIR
 SECRET_KEY = app.django_secret_key
 DEBUG = True
-ALLOWED_HOSTS = ["127.0.0.1", "localhost", "testserver"]
+ALLOWED_HOSTS = ["*"]
 APPEND_SLASH = False
 
 INSTALLED_APPS = [
@@ -20,6 +20,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "gateway.middleware.AllowClientCORS",
     "gateway.middleware.DisableCSRFForAPI",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",

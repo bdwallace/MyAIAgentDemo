@@ -279,7 +279,7 @@ Multi-Agent / Distributed
   gateway/chat.py      → ASGI 上的 SSE（uvicorn gateway.asgi:application）
   manage.py            → Django 管理命令；日常启动仍是 python run.py
 
-会话、记忆、RAG 表继续用 SQLAlchemy（data/），不迁 Django ORM。Auth / 多端路由仍留给后面。
+会话、记忆、RAG 表继续用 SQLAlchemy（data/），不迁 Django ORM。多端客户端见第十节 V3。不做登录，不用 Django Admin。
 
 怎么验证：
 
@@ -308,3 +308,26 @@ V1 的 sandbox 只是路径牢：命令仍在宿主机跑，黑名单挡不住 `
 2. 让它读 `/etc/passwd` 只能看到容器自己的，不是 Windows 主机
 3. 让它读项目根目录的 `.env` 应失败（工作区外）
 4. 容器内可以访问公网；用服务名访问 postgres/redis 应失败
+
+十、V3 多了什么
+
+范围：多端客户端，仍是同一个 Gateway、同一套 `/api/*`。不做登录，不用 Django Admin。
+
+  clients/web        → 原网页；窄屏用左上角「菜单」拉开侧栏（可当手机端）
+  clients/cli.py     → 终端：python -m clients.cli
+  clients/desktop.py → 桌面窗：python -m clients.desktop（需 pywebview）
+  clients/api.py     → CLI / 桌面共用的 HTTP + SSE 客户端
+  Gateway            → CORS、ALLOWED_HOSTS=*；局域网手机把 HOST 设成 0.0.0.0
+
+怎么跑：
+
+1. `python run.py`，浏览器打开 http://127.0.0.1:8080
+2. 另开终端：`python -m clients.cli`（或 `.\scripts\run_cli.ps1`）
+3. 桌面：`python -m clients.desktop`（或 `.\scripts\run_desktop.ps1`）
+4. 「手机」就是同一张网页的窄屏布局，不单独做 App，也不保证局域网访问
+
+怎么验证：
+
+1. 页面副标题为 V3；`GET /api/health` JSON 里有 `clients`
+2. `python -m clients.cli --health` 能打通；再进交互发一句，网页侧栏会出现同一会话
+3. 把浏览器窗口缩窄，点「菜单」能看到会话列表（窄屏布局；不要求真机访问）
